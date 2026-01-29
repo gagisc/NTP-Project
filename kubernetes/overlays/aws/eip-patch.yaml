@@ -1,0 +1,19 @@
+# Elastic IP patch for AWS NLB
+# This is a template - replace EIP_ALLOCATION_ID with actual value from Terraform
+#
+# Usage:
+# 1. Get EIP allocation ID from Terraform: cd terraform/environments/aws-us-east-1 && terraform output ntp_eip_allocation_id
+# 2. Replace EIP_ALLOCATION_ID below
+# 3. Apply: kubectl apply -k kubernetes/overlays/aws/
+#
+# Or apply directly with kustomize edit:
+# cd kubernetes/overlays/aws
+# kustomize edit add patch --kind Service --name ntp-server --patch '[{"op": "add", "path": "/metadata/annotations/service.beta.kubernetes.io~1aws-load-balancer-eip-allocations", "value": "YOUR_EIP_ID"}]'
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: ntp-server
+  annotations:
+    # REPLACE with your actual EIP allocation ID
+    service.beta.kubernetes.io/aws-load-balancer-eip-allocations: "EIP_ALLOCATION_ID"

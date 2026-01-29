@@ -1,0 +1,29 @@
+# Docker ignore file
+
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+README*
+LICENSE
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Local development
+docker-compose.override.yml
+.env.local
+.env.development
+
+# Build artifacts
+*.tar
+*.tar.gz

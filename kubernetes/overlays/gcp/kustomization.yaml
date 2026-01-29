@@ -1,0 +1,57 @@
+# Kustomize overlay for GCP GKE deployment
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: ntp-server-gcp
+
+# Base configuration
+resources:
+  - ../../base
+
+# Namespace override (if needed)
+namespace: ntp-server
+
+# GCP-specific labels
+commonLabels:
+  cloud-provider: gcp
+  environment: production
+
+# GCP-specific annotations for all resources
+commonAnnotations:
+  cloud.provider: gcp
+
+# Patches for GCP-specific configurations
+patches:
+  # Patch Service with GCP Load Balancer annotations
+  - target:
+      kind: Service
+      name: ntp-server
+    patch: |-
+      - op: add
+        path: /metadata/annotations/cloud.google.com~1l4-rbs
+        value: enabled
+      - op: add
+        path: /metadata/annotations/networking.gke.io~1load-balancer-type
+        value: External
+
+  # Patch ServiceAccount with GCP Workload Identity
+  - target:
+      kind: ServiceAccount
+      name: ntp-server
+    patch: |-
+      - op: add
+        path: /metadata/annotations/iam.gke.io~1gcp-service-account
+        value: ntp-server-cluster-workload@PROJECT_ID.iam.gserviceaccount.com
+
+# Image configuration for GCP Artifact Registry
+# Replace with your actual Artifact Registry repository
+images:
+  - name: ntp-server
+    newName: us-central1-docker.pkg.dev/PROJECT_ID/ntp-server/ntp-server
+    newTag: latest
+
+# Replicas adjustment for GCP (optional)
+replicas:
+  - name: ntp-server
+    count: 2

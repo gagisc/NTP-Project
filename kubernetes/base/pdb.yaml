@@ -1,0 +1,16 @@
+# PodDisruptionBudget for NTP Server
+# Ensures minimum availability during node maintenance
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ntp-server
+  namespace: ntp-server
+  labels:
+    app: ntp-server
+    app.kubernetes.io/name: ntp-server
+spec:
+  # Ensure at least 1 pod is always available
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: ntp-server

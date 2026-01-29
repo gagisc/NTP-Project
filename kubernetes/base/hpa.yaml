@@ -1,0 +1,61 @@
+# Horizontal Pod Autoscaler for NTP Server
+# Scales based on CPU utilization to handle traffic spikes
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ntp-server
+  namespace: ntp-server
+  labels:
+    app: ntp-server
+    app.kubernetes.io/name: ntp-server
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ntp-server
+  
+  # Minimum 2 replicas for high availability
+  minReplicas: 2
+  
+  # Maximum 10 replicas to handle traffic spikes
+  # pool.ntp.org traffic: 5-15 packets/sec normal, 60-120 packets/sec spikes
+  maxReplicas: 10
+  
+  metrics:
+    # Scale based on CPU utilization
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+    
+    # Scale based on memory utilization (optional)
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 70
+  
+  behavior:
+    # Scale up quickly to handle traffic spikes
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+      selectPolicy: Max
+    
+    # Scale down slowly to avoid oscillation
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+      selectPolicy: Min

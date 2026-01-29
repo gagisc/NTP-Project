@@ -1,0 +1,81 @@
+# ConfigMap for Chrony NTP Server Configuration
+# This configuration follows pool.ntp.org guidelines
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chrony-config
+  namespace: ntp-server
+  labels:
+    app: ntp-server
+    app.kubernetes.io/name: ntp-server
+    app.kubernetes.io/component: config
+data:
+  chrony.conf: |
+    # Chrony configuration for pool.ntp.org server
+    # Following pool.ntp.org guidelines:
+    # - Statically chosen upstream servers (NOT pool.ntp.org aliases)
+    # - No LOCAL clock driver
+    # - noquery restriction for management queries
+    
+    # ============================================
+    # Upstream NTP Servers (Stratum 1/2)
+    # ============================================
+    # Manually selected reliable Stratum 1/2 servers
+    # Do NOT use *.pool.ntp.org aliases
+    
+    # NIST Time Servers (USA)
+    server time.nist.gov iburst prefer
+    server time-a-g.nist.gov iburst
+    server time-b-g.nist.gov iburst
+    
+    # US Naval Observatory (USA)
+    server tick.usno.navy.mil iburst
+    
+    # PTB Germany (Europe)
+    server ptbtime1.ptb.de iburst
+    
+    # ============================================
+    # Server Configuration
+    # ============================================
+    
+    # Allow NTP client access from anywhere (required for pool.ntp.org)
+    allow all
+    
+    # ============================================
+    # Drift and Sync
+    # ============================================
+    
+    # Record drift rate
+    driftfile /var/lib/chrony/drift
+    
+    # Step clock if offset > 1 second in first 3 updates
+    makestep 1.0 3
+    
+    # Sync RTC
+    rtcsync
+    
+    # ============================================
+    # Security
+    # ============================================
+    
+    # Disable management queries from remote hosts (pool.ntp.org requirement)
+    cmdallow 127.0.0.1
+    cmdallow ::1
+    
+    # Bind command socket to localhost only
+    bindcmdaddress 127.0.0.1
+    bindcmdaddress ::1
+    
+    # ============================================
+    # Logging
+    # ============================================
+    
+    log tracking measurements statistics
+    logdir /var/log/chrony
+    
+    # ============================================
+    # Quality Settings
+    # ============================================
+    
+    maxupdateskew 100.0
+    minsources 3

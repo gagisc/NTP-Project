@@ -1,0 +1,25 @@
+# GCP-specific Service patch for External Passthrough Network Load Balancer
+# This file contains additional patches that can be applied manually
+# Use: kubectl patch service ntp-server -n ntp-server --patch-file service-patch.yaml
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: ntp-server
+  namespace: ntp-server
+  annotations:
+    # GCP L4 Regional Backend Service (recommended for new deployments)
+    cloud.google.com/l4-rbs: "enabled"
+    
+    # Load balancer type
+    networking.gke.io/load-balancer-type: External
+    
+    # Static IP - REPLACE WITH YOUR STATIC IP NAME from Terraform
+    # Get this from Terraform output: terraform output ntp_static_ip_name
+    # networking.gke.io/load-balancer-ip-addresses: ntp-server-cluster-ntp-ip
+    
+    # Backend config for health checks (optional)
+    # cloud.google.com/backend-config: '{"default": "ntp-backend-config"}'
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local

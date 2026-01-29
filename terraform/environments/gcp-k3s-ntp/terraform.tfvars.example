@@ -1,0 +1,17 @@
+# Example terraform.tfvars for GCP k3s NTP environment
+# Copy this file to terraform.tfvars and customize as needed
+
+project_id = "your-gcp-project-id"
+region     = "us-central1"
+zone       = "us-central1-a"
+name       = "ntp-k3s-server"
+
+machine_type = "e2-micro"
+
+# Optional: restrict SSH and k3s API to your IPs
+# ssh_cidr_blocks    = ["203.0.113.10/32"]
+# k3s_api_cidr_blocks = ["203.0.113.10/32"]
+
+ssh_cidr_blocks     = []
+k3s_api_cidr_blocks = []
+

@@ -1,0 +1,57 @@
+# Kustomize overlay for AWS EKS deployment
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: ntp-server-aws
+
+# Base configuration
+resources:
+  - ../../base
+
+# Namespace override (if needed)
+namespace: ntp-server
+
+# AWS-specific labels
+commonLabels:
+  cloud-provider: aws
+  environment: production
+
+# AWS-specific annotations for all resources
+commonAnnotations:
+  cloud.provider: aws
+
+# Patches for AWS-specific configurations
+patches:
+  # Patch Service with AWS NLB annotations
+  - target:
+      kind: Service
+      name: ntp-server
+    patch: |-
+      - op: add
+        path: /metadata/annotations/service.beta.kubernetes.io~1aws-load-balancer-type
+        value: external
+      - op: add
+        path: /metadata/annotations/service.beta.kubernetes.io~1aws-load-balancer-nlb-target-type
+        value: ip
+      - op: add
+        path: /metadata/annotations/service.beta.kubernetes.io~1aws-load-balancer-scheme
+        value: internet-facing
+      - op: add
+        path: /metadata/annotations/service.beta.kubernetes.io~1aws-load-balancer-cross-zone-load-balancing-enabled
+        value: "true"
+      - op: add
+        path: /metadata/annotations/service.beta.kubernetes.io~1aws-load-balancer-healthcheck-protocol
+        value: TCP
+
+# Image configuration for AWS ECR
+# Replace with your actual ECR repository
+images:
+  - name: ntp-server
+    newName: <AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/ntp-server
+    newTag: latest
+
+# Replicas adjustment for AWS (optional)
+replicas:
+  - name: ntp-server
+    count: 2

@@ -1,0 +1,21 @@
+# Example terraform.tfvars for AWS EC2 NTP environment
+# Copy this file to terraform.tfvars and customize as needed
+
+region       = "us-east-1"
+name         = "ntp-ec2-server"
+
+# For free tier, use t2.micro or t3.micro depending on your account
+instance_type = "t3.micro"
+
+# Optional: restrict SSH to your IP (recommended) or leave empty to disable SSH
+# ssh_cidr_blocks = ["203.0.113.10/32"]
+ssh_cidr_blocks = []
+
+# Optional: specify a subnet in the default VPC
+# subnet_id = "subnet-xxxxxxxx"
+subnet_id = ""
+
+# Optional: specify an AMI ID (otherwise, you'll need to set this or adjust the module)
+# ami_id = "ami-xxxxxxxx"
+ami_id = ""
+

@@ -1,0 +1,19 @@
+# Static IP patch for GCP Network Load Balancer
+# This is a template - replace STATIC_IP_NAME with actual value from Terraform
+#
+# Usage:
+# 1. Get static IP name from Terraform: cd terraform/environments/gcp-us-central1 && terraform output ntp_static_ip_name
+# 2. Replace STATIC_IP_NAME below
+# 3. Apply: kubectl apply -k kubernetes/overlays/gcp/
+#
+# Or apply directly with kustomize edit:
+# cd kubernetes/overlays/gcp
+# kustomize edit add patch --kind Service --name ntp-server --patch '[{"op": "add", "path": "/metadata/annotations/networking.gke.io~1load-balancer-ip-addresses", "value": "YOUR_STATIC_IP_NAME"}]'
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: ntp-server
+  annotations:
+    # REPLACE with your actual static IP name from GCP
+    networking.gke.io/load-balancer-ip-addresses: "STATIC_IP_NAME"

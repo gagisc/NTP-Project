@@ -1,0 +1,9 @@
+# Namespace for NTP Server
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ntp-server
+  labels:
+    app: ntp-server
+    app.kubernetes.io/name: ntp-server
+    app.kubernetes.io/component: time-service
