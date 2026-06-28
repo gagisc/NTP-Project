@@ -30,6 +30,12 @@ variable "subnet_id" {
   default     = ""
 }
 
+variable "key_name" {
+  description = "EC2 Key Pair name for SSH access. Leave empty to disable SSH key attachment."
+  type        = string
+  default     = ""
+}
+
 variable "ssh_cidr_blocks" {
   description = "List of CIDR blocks allowed to SSH to the instance. Leave empty to disable SSH."
   type        = list(string)

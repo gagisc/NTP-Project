@@ -2,7 +2,7 @@
 # NTP Server deployment for pool.ntp.org
 
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.3"
 
   required_providers {
     google = {

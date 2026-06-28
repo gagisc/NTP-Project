@@ -2,7 +2,7 @@
 // Lean architecture: single small instance + Elastic IP + k3s (no managed EKS)
 
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.3"
 
   required_providers {
     aws = {
@@ -70,6 +70,31 @@ resource "aws_security_group" "ntp" {
   }
 }
 
+// Latest Amazon Linux 2023 AMI - used when ami_id variable is empty
+data "aws_ami" "al2023" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-*-x86_64"]
+  }
+
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+locals {
+  resolved_ami = var.ami_id != "" ? var.ami_id : data.aws_ami.al2023.id
+}
+
 // Use default VPC and a public subnet (cheap and simple)
 data "aws_vpc" "default" {
   default = true
@@ -128,13 +153,14 @@ locals {
 
 // EC2 instance running k3s (and hosting the NTP pod)
 resource "aws_instance" "ntp" {
-  ami                    = var.ami_id
+  ami                    = local.resolved_ami
   instance_type          = var.instance_type
   subnet_id              = data.aws_subnet.default_public.id
   vpc_security_group_ids = [aws_security_group.ntp.id]
   associate_public_ip_address = true
 
   user_data = local.user_data
+  key_name  = var.key_name != "" ? var.key_name : null
 
   root_block_device {
     volume_size = 8

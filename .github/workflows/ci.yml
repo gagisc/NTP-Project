@@ -1,0 +1,181 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  # -------------------------------------------------------
+  # Docker lint & build validation
+  # -------------------------------------------------------
+  docker-build:
+    name: Docker Build (lint + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint Dockerfile with hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/Dockerfile
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image (no push)
+        uses: docker/build-push-action@v5
+        with:
+          context: docker
+          push: false
+          tags: ntp-server:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # -------------------------------------------------------
+  # Kubernetes manifest validation
+  # -------------------------------------------------------
+  k8s-validate:
+    name: Kubernetes Manifest Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubeconform
+        run: |
+          curl -sSLo /tmp/kubeconform.tar.gz \
+            https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
+          tar -xf /tmp/kubeconform.tar.gz -C /usr/local/bin kubeconform
+          chmod +x /usr/local/bin/kubeconform
+
+      - name: Validate base manifests
+        run: |
+          kubeconform -strict -summary \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            kubernetes/base/*.yaml
+
+      - name: Install kustomize
+        run: |
+          curl -sSLo /tmp/kustomize.tar.gz \
+            https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.3.0/kustomize_v5.3.0_linux_amd64.tar.gz
+          tar -xf /tmp/kustomize.tar.gz -C /usr/local/bin
+          chmod +x /usr/local/bin/kustomize
+
+      - name: Build & validate AWS overlay (write params.env)
+        run: |
+          OVERLAY_TMP="$(mktemp -d)"
+          cp -r kubernetes/overlays/aws/. "$OVERLAY_TMP/"
+          cat > "$OVERLAY_TMP/params.env" <<'EOF'
+          ECR_IMAGE=123456789012.dkr.ecr.us-east-1.amazonaws.com/ntp-server:latest
+          EIP_ALLOCATION_ID=eipalloc-0000000000000001
+          EOF
+          sed -i 's/^[[:space:]]*//' "$OVERLAY_TMP/params.env"
+          kustomize build "$OVERLAY_TMP" | kubeconform -strict -summary -
+
+      - name: Build & validate GCP overlay (write params.env)
+        run: |
+          OVERLAY_TMP="$(mktemp -d)"
+          cp -r kubernetes/overlays/gcp/. "$OVERLAY_TMP/"
+          cat > "$OVERLAY_TMP/params.env" <<'EOF'
+          AR_IMAGE=us-central1-docker.pkg.dev/my-project/ntp-server/ntp-server:latest
+          STATIC_IP_NAME=ntp-server-cluster-ntp-ip
+          GCP_WORKLOAD_SA=ntp-server-cluster-workload@my-project.iam.gserviceaccount.com
+          EOF
+          sed -i 's/^[[:space:]]*//' "$OVERLAY_TMP/params.env"
+          kustomize build "$OVERLAY_TMP" | kubeconform -strict -summary -
+
+  # -------------------------------------------------------
+  # Terraform validate (all environments + modules)
+  # -------------------------------------------------------
+  terraform-validate:
+    name: Terraform Validate
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        directory:
+          - terraform/environments/aws-us-east-1
+          - terraform/environments/aws-ec2-ntp
+          - terraform/environments/gcp-us-central1
+          - terraform/environments/gcp-k3s-ntp
+          - terraform/modules/aws-eks
+          - terraform/modules/aws-ntp
+          - terraform/modules/gcp-gke
+          - terraform/modules/gcp-ntp
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.7"
+
+      - name: Terraform Init (${{ matrix.directory }})
+        working-directory: ${{ matrix.directory }}
+        run: terraform init -backend=false
+
+      - name: Terraform Validate (${{ matrix.directory }})
+        working-directory: ${{ matrix.directory }}
+        run: terraform validate
+
+      - name: Terraform Format Check (${{ matrix.directory }})
+        working-directory: ${{ matrix.directory }}
+        run: terraform fmt -check -recursive
+
+  # -------------------------------------------------------
+  # Shell script linting (shellcheck)
+  # -------------------------------------------------------
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: scripts
+          severity: warning
+
+  # -------------------------------------------------------
+  # Script & configuration unit tests (pure bash, no cloud)
+  # -------------------------------------------------------
+  script-tests:
+    name: Script & Config Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run test suite
+        run: bash tests/scripts/test_deploy_scripts.sh
+
+  # -------------------------------------------------------
+  # Terratest module validation (go test, no cloud creds)
+  # -------------------------------------------------------
+  terratest:
+    name: Terratest Module Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "~1.21"
+          cache-dependency-path: tests/terraform/go.mod
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.7"
+          terraform_wrapper: false
+
+      - name: Download Go modules
+        working-directory: tests/terraform
+        run: go mod download
+
+      - name: Run Terratest (validate-only, no cloud)
+        working-directory: tests/terraform
+        run: go test -v -timeout 10m ./...

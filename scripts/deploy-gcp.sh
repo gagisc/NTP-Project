@@ -110,9 +110,8 @@ build_and_push_image() {
     
     echo -e "${GREEN}Docker image pushed to Artifact Registry: ${AR_REPO}/ntp-server:latest${NC}"
     
-    # Update kustomization with correct project ID
-    cd "$K8S_DIR"
-    sed -i "s|PROJECT_ID|${PROJECT_ID}|g" kustomization.yaml
+    # Export for use in deploy_kubernetes
+    export PROJECT_ID REGION AR_REPO
 }
 
 # Deploy Kubernetes resources
@@ -121,15 +120,24 @@ deploy_kubernetes() {
     
     cd "$TF_DIR"
     STATIC_IP_NAME=$(terraform output -raw ntp_static_ip_name)
-    PROJECT_ID=$(gcloud config get-value project)
+    PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project)}"
     
-    # Update the static IP patch
-    cd "$K8S_DIR"
-    sed -i "s|STATIC_IP_NAME|${STATIC_IP_NAME}|g" static-ip-patch.yaml
-    sed -i "s|PROJECT_ID|${PROJECT_ID}|g" kustomization.yaml
-    
-    # Apply with kustomize
-    kubectl apply -k .
+    # Write params.env for Kustomize replacements (temp dir keeps source clean)
+    OVERLAY_TMP="$(mktemp -d)"
+    trap 'rm -rf "$OVERLAY_TMP"' EXIT
+    cp -r "$K8S_DIR/." "$OVERLAY_TMP/"
+
+    GCP_WORKLOAD_SA="${CLUSTER_NAME:-ntp-server-cluster}-workload@${PROJECT_ID}.iam.gserviceaccount.com"
+    AR_IMAGE="${REGION:-us-central1}-docker.pkg.dev/${PROJECT_ID}/ntp-server/ntp-server:latest"
+
+    cat > "$OVERLAY_TMP/params.env" <<EOF
+AR_IMAGE=${AR_IMAGE}
+STATIC_IP_NAME=${STATIC_IP_NAME}
+GCP_WORKLOAD_SA=${GCP_WORKLOAD_SA}
+EOF
+
+    # Apply with kustomize from the temp overlay
+    kubectl apply -k "$OVERLAY_TMP"
     
     echo -e "${GREEN}Kubernetes resources deployed.${NC}"
 }
@@ -150,16 +158,22 @@ verify_deployment() {
     echo -e "\n${GREEN}Service Status:${NC}"
     kubectl get svc -n ntp-server
     
-    # Get external IP
-    echo -e "\n${YELLOW}Waiting for LoadBalancer IP...${NC}"
-    while true; do
+    # Get external IP (timeout after 10 minutes)
+    echo -e "\n${YELLOW}Waiting for LoadBalancer IP (up to 10 minutes)...${NC}"
+    LB_WAIT=0
+    LB_TIMEOUT=60
+    while [ "$LB_WAIT" -lt "$LB_TIMEOUT" ]; do
         EXTERNAL_IP=$(kubectl get svc ntp-server -n ntp-server -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
         if [ -n "$EXTERNAL_IP" ]; then
             echo -e "${GREEN}LoadBalancer IP: ${EXTERNAL_IP}${NC}"
             break
         fi
+        LB_WAIT=$((LB_WAIT + 1))
         sleep 10
     done
+    if [ -z "$EXTERNAL_IP" ]; then
+        echo -e "${YELLOW}LoadBalancer IP not yet assigned. Check: kubectl get svc -n ntp-server${NC}"
+    fi
     
     # Verify chrony is syncing
     echo -e "\n${GREEN}Chrony Tracking Status:${NC}"

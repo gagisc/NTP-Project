@@ -2,6 +2,8 @@
 # This module creates Elastic IP, security groups, and NLB-related resources
 
 terraform {
+  required_version = ">= 1.0"
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"

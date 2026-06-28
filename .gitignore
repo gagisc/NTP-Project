@@ -42,6 +42,10 @@ logs/
 .env.local
 .env.*.local
 
+# Kustomize overlay runtime params (copy from params.env.example, never commit)
+kubernetes/overlays/aws/params.env
+kubernetes/overlays/gcp/params.env
+
 # Build artifacts
 dist/
 build/

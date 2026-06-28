@@ -1,5 +1,10 @@
 # Outputs for AWS us-east-1 Environment
 
+output "region" {
+  description = "AWS region"
+  value       = var.region
+}
+
 output "cluster_name" {
   description = "EKS cluster name"
   value       = module.eks.cluster_name

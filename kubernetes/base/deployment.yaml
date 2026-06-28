@@ -22,7 +22,6 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9123"
     spec:
-      # Use host networking so NTP is served directly on the node IP:123
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
 
@@ -31,8 +30,9 @@ spec:
       
       # Security context for the pod
       securityContext:
-        runAsNonRoot: false  # Required for chrony to bind to port 123
-        fsGroup: 101  # chrony group
+        runAsNonRoot: false
+        runAsUser: 0
+        fsGroup: 101
       
       # Anti-affinity to spread pods across nodes
       affinity:
@@ -128,9 +128,6 @@ spec:
           emptyDir: {}
         - name: chrony-logs
           emptyDir: {}
-      
-      # DNS policy
-      dnsPolicy: ClusterFirst
       
       # Restart policy
       restartPolicy: Always

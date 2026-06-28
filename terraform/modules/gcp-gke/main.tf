@@ -2,6 +2,8 @@
 # This module creates a GKE cluster with node pools
 
 terraform {
+  required_version = ">= 1.0"
+
   required_providers {
     google = {
       source  = "hashicorp/google"

@@ -2,6 +2,8 @@
 # This module creates static IP and firewall rules for NTP server
 
 terraform {
+  required_version = ">= 1.0"
+
   required_providers {
     google = {
       source  = "hashicorp/google"

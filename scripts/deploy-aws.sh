@@ -88,9 +88,9 @@ build_and_push_image() {
     
     cd "$DOCKER_DIR"
     
-    # Get AWS account ID
+    # Get AWS account ID and region from Terraform outputs/config
     AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-    AWS_REGION="us-east-1"
+    AWS_REGION=$(cd "$TF_DIR" && terraform output -raw region 2>/dev/null || echo "us-east-1")
     ECR_REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/ntp-server"
     
     # Create ECR repository if it doesn't exist
@@ -107,9 +107,8 @@ build_and_push_image() {
     
     echo -e "${GREEN}Docker image pushed to ECR: ${ECR_REPO}:latest${NC}"
     
-    # Update kustomization with correct image
-    cd "$K8S_DIR"
-    sed -i "s|<AWS_ACCOUNT_ID>|${AWS_ACCOUNT_ID}|g" kustomization.yaml
+    # Export for use in deploy_kubernetes
+    export AWS_ACCOUNT_ID AWS_REGION ECR_REPO
 }
 
 # Deploy Kubernetes resources
@@ -118,13 +117,21 @@ deploy_kubernetes() {
     
     cd "$TF_DIR"
     EIP_ID=$(terraform output -raw ntp_eip_allocation_id)
+    AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-$(aws sts get-caller-identity --query Account --output text)}"
+    AWS_REGION="${AWS_REGION:-us-east-1}"
     
-    # Update the EIP patch
-    cd "$K8S_DIR"
-    sed -i "s|EIP_ALLOCATION_ID|${EIP_ID}|g" eip-patch.yaml
-    
-    # Apply with kustomize
-    kubectl apply -k .
+    # Write params.env for Kustomize replacements (temp dir keeps source clean)
+    OVERLAY_TMP="$(mktemp -d)"
+    trap 'rm -rf "$OVERLAY_TMP"' EXIT
+    cp -r "$K8S_DIR/." "$OVERLAY_TMP/"
+
+    cat > "$OVERLAY_TMP/params.env" <<EOF
+ECR_IMAGE=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/ntp-server:latest
+EIP_ALLOCATION_ID=${EIP_ID}
+EOF
+
+    # Apply with kustomize from the temp overlay
+    kubectl apply -k "$OVERLAY_TMP"
     
     echo -e "${GREEN}Kubernetes resources deployed.${NC}"
 }
@@ -145,16 +152,22 @@ verify_deployment() {
     echo -e "\n${GREEN}Service Status:${NC}"
     kubectl get svc -n ntp-server
     
-    # Get external IP
-    echo -e "\n${YELLOW}Waiting for LoadBalancer IP...${NC}"
-    while true; do
+    # Get external IP (timeout after 10 minutes)
+    echo -e "\n${YELLOW}Waiting for LoadBalancer hostname (up to 10 minutes)...${NC}"
+    LB_WAIT=0
+    LB_TIMEOUT=60
+    while [ "$LB_WAIT" -lt "$LB_TIMEOUT" ]; do
         EXTERNAL_IP=$(kubectl get svc ntp-server -n ntp-server -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
         if [ -n "$EXTERNAL_IP" ]; then
             echo -e "${GREEN}LoadBalancer Hostname: ${EXTERNAL_IP}${NC}"
             break
         fi
+        LB_WAIT=$((LB_WAIT + 1))
         sleep 10
     done
+    if [ -z "$EXTERNAL_IP" ]; then
+        echo -e "${YELLOW}LoadBalancer hostname not yet assigned. Check: kubectl get svc -n ntp-server${NC}"
+    fi
     
     # Verify chrony is syncing
     echo -e "\n${GREEN}Chrony Tracking Status:${NC}"

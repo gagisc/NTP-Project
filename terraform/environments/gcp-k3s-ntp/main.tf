@@ -2,7 +2,7 @@
 // Lean architecture: single e2-micro + static IP + k3s (no managed GKE)
 
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.3"
 
   required_providers {
     google = {
@@ -27,7 +27,7 @@ resource "google_compute_address" "ntp" {
   network_tier = "PREMIUM"
 }
 
-// Firewall rules for NTP + optional SSH + optional k3s API
+// Firewall rule: NTP (UDP+TCP 123) open to the world
 resource "google_compute_firewall" "ntp" {
   name    = "${var.name}-ntp"
   project = var.project_id
@@ -46,31 +46,46 @@ resource "google_compute_firewall" "ntp" {
     ports    = ["123"]
   }
 
-  // SSH from your IPs (optional)
-  dynamic "allow" {
-    for_each = length(var.ssh_cidr_blocks) > 0 ? [1] : []
-    content {
-      protocol = "tcp"
-      ports    = ["22"]
-    }
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = [var.name]
+}
+
+// Firewall rule: SSH (TCP 22) only from specified CIDRs
+resource "google_compute_firewall" "ssh" {
+  count   = length(var.ssh_cidr_blocks) > 0 ? 1 : 0
+  name    = "${var.name}-ssh"
+  project = var.project_id
+  network = "default"
+
+  direction = "INGRESS"
+  priority  = 1000
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
   }
 
-  // k3s API (6443) from your IPs (optional, for kubectl directly to node)
-  dynamic "allow" {
-    for_each = length(var.k3s_api_cidr_blocks) > 0 ? [1] : []
-    content {
-      protocol = "tcp"
-      ports    = ["6443"]
-    }
+  source_ranges = var.ssh_cidr_blocks
+  target_tags   = [var.name]
+}
+
+// Firewall rule: k3s API (TCP 6443) only from specified CIDRs
+resource "google_compute_firewall" "k3s_api" {
+  count   = length(var.k3s_api_cidr_blocks) > 0 ? 1 : 0
+  name    = "${var.name}-k3s-api"
+  project = var.project_id
+  network = "default"
+
+  direction = "INGRESS"
+  priority  = 1000
+
+  allow {
+    protocol = "tcp"
+    ports    = ["6443"]
   }
 
-  source_ranges = concat(
-    ["0.0.0.0/0"], // for NTP
-    var.ssh_cidr_blocks,
-    var.k3s_api_cidr_blocks,
-  )
-
-  target_tags = [var.name]
+  source_ranges = var.k3s_api_cidr_blocks
+  target_tags   = [var.name]
 }
 
 // Metadata startup script to install k3s and prepare for NTP pod
